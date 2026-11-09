@@ -1,0 +1,17 @@
+{
+  "name": "Skyjo",
+  "short_name": "Skyjo",
+  "description": "Skyjo à 2 sur iPad, ou contre l'ordinateur (jusqu'à 8 joueurs)",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1030",
+  "theme_color": "#0d1030",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
