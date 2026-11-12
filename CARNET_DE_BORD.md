@@ -4,11 +4,13 @@ Journal de toutes les opérations du projet, pour pouvoir le reprendre sans rien
 
 ## État courant
 
-- Trois modes jouables (ordinateur, passe-passe, face à face), 2 à 8 joueurs, ordinateur à 3 niveaux. Testé en navigateur simulé uniquement.
+- Modes : contre l'ordinateur, et **En ligne** (2 humains max, chacun son appareil, ordinateurs en complément). Passe-passe et face à face masqués (`?anciens=1`). 2 à 8 joueurs, ordinateur à 3 niveaux. Testé en navigateur simulé uniquement.
 - **Non testé sur un vrai iPad.**
 - Pas de mode téléphone pour l'instant (voir « À faire »).
 
 ## À faire
+
+- **Skyjo = jeu pilote du mode En ligne** : créer la table `parties` dans Supabase (SQL fourni à l'auteur), créer le compte de la deuxième personne, puis valider sur iPhone, iPad et téléphone Android. Ensuite : supprimer définitivement passe-passe et face à face, et déployer `en-ligne.js` dans les autres jeux, un dépôt à la fois.
 
 - Tester sur l'iPad et corriger ce qui sort des essais réels (taille des cartes, confort du face à face).
 - Étendre le mode « iPad = plateau, téléphone = main » à Skyjo une fois la liaison validée sur la Bataille navale.
@@ -33,3 +35,18 @@ Opérations :
 6. Parcours Playwright (`tests/e2e/solo.py`) : parties complètes dans les trois modes ; captures iPad portrait et paysage, iPhone, 8 joueurs.
 7. Corrections pendant les essais : face à face (carte en main qui agrandissait l'en-tête et faisait déborder la grille), tailles de cartes, rangée unique d'adversaires en paysage.
 8. Premier envoi sur GitHub (branche `main`).
+
+## 2026-11-12 — Mode « En ligne » (pilote)
+
+Décisions : seulement les jeux à plusieurs ; 2 humains maximum, chacun sur son appareil (iPhone, iPad, téléphone Android de la deuxième personne) ; ordinateurs possibles ; l'en ligne remplace passe-passe et face à face ; mains cachées par confiance ; Skyjo choisi comme pilote.
+
+Opérations :
+
+1. `en-ligne.js` : connexion partagée, création / lecture / écriture à version, liste, suppression, surveillance par interrogation de la version.
+2. `index.html` : bouton « En ligne », panneau de connexion / code / parties en cours, salle d'attente, bannière « Hors ligne » ; anciens modes masqués (`?anciens=1`).
+3. `app.js` : actions rejouables (`applyAction`, `jouer`), `flush()` avec rejeu après conflit, création / jonction / reprise, tour imposé, ordinateurs joués par l'hôte seulement.
+4. `sw.js` : cache `skyjo-v2`, `en-ligne.js` ajouté.
+5. `tests/e2e/en_ligne.py` : 42 vérifications avec deux contextes navigateur et un faux Supabase (connexion refusée, code inconnu, troisième personne refusée, retournements simultanés avec conflits rejoués, cartes cachées, coup hors ligne envoyé au retour du réseau, reprise après rechargement, partie complète avec mêmes scores, rejouer, suppression vue par l'autre appareil).
+6. Corrigé pendant les essais : test hors ligne (Playwright répond aux requêtes interceptées sans réseau, il faut couper le faux serveur) ; placeholder du code tronqué.
+
+Limites : pas testé avec le vrai Supabase ni sur de vrais appareils.

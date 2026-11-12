@@ -127,7 +127,16 @@ input.txt{width:100%;padding:11px 12px;border-radius:12px;border:1px solid rgba(
 .midstrip .opp{padding:4px 6px 6px}
 
 /* ---------- Voile et manche terminée ---------- */
-#veil{position:fixed;inset:0;z-index:50;background:radial-gradient(130% 80% at 50% 0%,var(--sky2),var(--sky1) 70%);display:flex;align-items:center;justify-content:center;padding:24px}
+#veil,#wait{position:fixed;inset:0;z-index:50;background:radial-gradient(130% 80% at 50% 0%,var(--sky2),var(--sky1) 70%);display:flex;align-items:center;justify-content:center;padding:24px}
+#wait .waitdots{color:var(--sun);font-weight:700}
+#offbar{position:fixed;left:0;right:0;bottom:env(safe-area-inset-bottom);z-index:60;height:26px;line-height:25px;padding:0 10px;text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;background:#fef3c7;color:#92400e;border-top:1px solid #fcd34d}
+.olwho{margin:0 0 12px;font-size:14px;color:var(--muted)}.olwho b{color:var(--ink)}
+.olrow{display:flex;gap:8px}.olrow .txt{text-transform:uppercase;letter-spacing:.2em;text-align:center}.olrow .btn{width:auto;padding:11px 16px;font-size:16px}
+.olerr{margin:10px 0 0;color:var(--danger);font-size:14px;line-height:1.35}
+.olitem{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid rgba(255,255,255,.1);text-align:left;font-size:14px}
+.olitem .t{flex:1;min-width:0}.olitem .t b{letter-spacing:.15em}.olitem .t small{display:block;color:var(--muted)}
+.olitem button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:transparent;font-size:14px}
+.ver{margin:0;color:var(--muted);font-size:12px;opacity:.7}
 .veilbox{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;max-width:340px;width:100%}
 .veilbox h2{margin:0;font-size:30px}.veilbox p{margin:0;line-height:1.4;color:var(--muted)}
 #roundOver{position:fixed;inset:0;z-index:60;background:rgba(7,9,28,.97);display:grid;grid-template-rows:1fr}
@@ -167,8 +176,9 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
       <h3>Mode de jeu</h3>
       <div class="modes" id="segMode">
         <button data-m="solo" class="on"><b>Contre l'ordinateur</b><small>1 à 7 adversaires (jusqu'à 8 joueurs)</small></button>
-        <button data-m="passe"><b>À deux, on se passe l'appareil</b><small>Un écran masque ta grille entre les tours</small></button>
-        <button data-m="duo"><b>À deux, face à face</b><small>iPad posé à plat, une grille devant chacun</small></button>
+        <button data-m="online"><b>En ligne, chacun son appareil</b><small>À deux, partout ; l'ordinateur peut compléter la table</small></button>
+        <button data-m="passe" class="old" hidden><b>À deux, on se passe l'appareil</b><small>Un écran masque ta grille entre les tours</small></button>
+        <button data-m="duo" class="old" hidden><b>À deux, face à face</b><small>iPad posé à plat, une grille devant chacun</small></button>
       </div>
     </div>
     <div class="panel">
@@ -184,9 +194,26 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
       <input class="txt" id="n1" maxlength="14" autocomplete="off" aria-label="Nom du joueur 1">
       <input class="txt" id="n2" maxlength="14" autocomplete="off" aria-label="Nom du joueur 2" style="margin-top:8px">
     </div>
+    <div class="panel" id="onlinePanel" hidden>
+      <h3>Compte pour jouer en ligne</h3>
+      <div id="olLogin">
+        <input class="txt" id="olEmail" type="email" autocomplete="username" autocapitalize="none" placeholder="E-mail du compte" aria-label="E-mail du compte">
+        <input class="txt" id="olPwd" type="password" autocomplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe" style="margin-top:8px">
+        <button class="btn sun" id="btnOlLogin" style="margin-top:10px;max-width:none">Se connecter</button>
+      </div>
+      <div id="olIn" hidden>
+        <p class="olwho">Connecté : <b id="olWho"></b> <button class="linkbtn" id="btnOlLogout">Se déconnecter</button></p>
+        <h3>Rejoindre une partie</h3>
+        <div class="olrow"><input class="txt" id="olCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="Code" aria-label="Code de la partie"><button class="btn ghost" id="btnOlJoin">Rejoindre</button></div>
+        <h3 style="margin-top:14px">Parties en cours</h3>
+        <div id="olList"></div>
+      </div>
+      <p class="olerr" id="olErr" role="alert" hidden></p>
+    </div>
     <button class="btn sun" id="btnNew">Nouvelle partie</button>
     <button class="btn ghost" id="btnResume" hidden>Reprendre la partie</button>
     <button class="linkbtn" id="btnRules">Règles du jeu</button>
+    <p class="ver" id="ver"></p>
   </section>
 
   <!-- ===== Partie : un joueur devant l'appareil ===== -->
@@ -241,6 +268,18 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
   </div>
 </div>
 
+<div id="wait" hidden>
+  <div class="veilbox">
+    <h2 class="rnd">Partie <span id="waitCode"></span></h2>
+    <p>Demande à l'autre joueur d'ouvrir Skyjo, de choisir « En ligne », puis « Rejoindre » et de taper ce code.</p>
+    <p class="waitdots">En attente de l'autre joueur…</p>
+    <button class="btn ghost" id="btnWaitCancel">Annuler la partie</button>
+    <button class="linkbtn" id="btnWaitHome">Revenir à l'accueil (la partie reste ouverte)</button>
+  </div>
+</div>
+
+<div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : ton coup partira dès le retour du réseau</div>
+
 <div id="roundOver" hidden>
   <div class="half top" hidden><div class="dlg" id="roTop"></div></div>
   <div class="half"><div class="dlg" id="roBottom"></div></div>
@@ -274,6 +313,7 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
 </div></dialog>
 
 <script src="engine.js"></script>
+<script src="en-ligne.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

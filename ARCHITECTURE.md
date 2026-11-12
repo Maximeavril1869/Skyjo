@@ -7,14 +7,16 @@ Application web statique, sans compilation ni serveur : HTML + JavaScript « cla
 ```
 index.html            Écrans (accueil, partie, face à face), styles, modales (règles, scores, menu), voile et fin de manche
 engine.js             Moteur pur : cartes, déroulement d'une manche, scores, ordinateur (3 niveaux). Testable sous Node
-app.js                Interface : accueil, modes, mise en page, rendu, sauvegarde
+app.js                Interface : accueil, modes, mise en page, rendu, sauvegarde, logique du mode en ligne
+en-ligne.js           Brique commune « En ligne » (copiée telle quelle dans les autres jeux) : connexion, parties, synchro
 sw.js                 Service worker : cache hors ligne (réseau d'abord, cache en secours)
 manifest.webmanifest, icons/    PWA
 tests/engine.test.js            Tests du moteur (node --test)
 tests/e2e/solo.py               Parcours navigateur (Playwright) : solo, passe, duo
+tests/e2e/en_ligne.py           Deux appareils simulés, faux Supabase en mémoire
 ```
 
-Ordre de chargement : `engine.js`, `app.js`.
+Ordre de chargement : `engine.js`, `en-ligne.js`, `app.js`.
 
 ## Moteur (`engine.js`)
 
@@ -65,9 +67,25 @@ note, over    dernier coup décrit, partie terminée
 
 Tailles de cartes calculées en JavaScript (`layout()` → `--cw`, `--mw`) selon l'écran et le nombre d'adversaires. Couleurs par valeur : −2/−1 indigo, 0 bleu ciel, 1–4 vert, 5–8 jaune, 9–12 rouge ; indices dans deux coins pour la lecture à l'envers.
 
+## Mode en ligne
+
+Fournisseur : Supabase (projet « plan-du-jour », table `parties`, accès réservé aux comptes connectés, inscriptions fermées). Requêtes `fetch` seulement, clé publique, aucune bibliothèque.
+
+**`en-ligne.js` → `window.EnLigne`** : `login/logout`, `creer(jeu, etat, titre)`, `lire(id)`, `version(id)`, `ecrire(id, versionAttendue, etat, titre)` (renvoie la nouvelle version, ou `false` en cas de conflit), `liste(jeu)`, `supprimer(id)`, `surveiller(id, getVersion, onChange, onStatus)` (interroge la seule version toutes les 1,5 s, puis lit l'état si elle a changé). États de réseau : `ok`, `hors-ligne`, `auth`, `erreur`, `supprimee`. Identifiant de partie = code à 4 lettres sans I ni O. La session est stockée sous `foyer_session_v1` (partagée avec les autres jeux, même origine GitHub Pages).
+
+**Concurrence optimiste** : chaque écriture est `PATCH … ?version=eq.N` ; si la version a changé, rien n'est écrit. Côté Skyjo, chaque coup est une **action rejouable** (`join`, `init`, `deck`, `take`, `place`, `flip`, `discard`, `bot`, `next`, `again`) appliquée par `applyAction`. `jouer(a)` l'applique tout de suite à l'écran et la met dans `ONL.pending` ; `flush()` tente l'écriture ; en cas de conflit elle relit l'état distant et **rejoue les actions en attente par-dessus** (un `join` est refusé si la partie est déjà complète). Hors ligne, les actions restent en attente et partent au retour du réseau.
+
+**Rôles** : siège 0 = hôte, c'est lui qui joue les ordinateurs ; l'invité (siège 1) les ignore. Un humain ne peut agir que sur son tour (`humanTurn()` exige `R.turn === ME()`). Le siège de l'invité est un emplacement `wait` tant qu'il n'a pas rejoint. `G.online = {uids:[uid, uid|null], joined}` ; le siège de l'appareil est retrouvé par `seatFor` (table locale `skyjo_online_v1`, puis identifiant du compte).
+
+**Cartes cachées** : l'état complet est dans la ligne ; l'interface masque les cartes face cachée des adversaires (pas de protection contre un joueur qui lirait le réseau, choix assumé).
+
+**Bannière « Hors ligne »** (`#offbar`) : `navigator.onLine` ou échec réseau de la synchro ; ne bloque pas les touchers (`pointer-events:none`).
+
 ## Sauvegardes (localStorage)
 
 | Clé | Contenu |
 |---|---|
 | `skyjo_partie_v1` | état `G` (reprise après fermeture) |
 | `skyjo_prefs_v1` | mode, nombre d'ordinateurs, niveau, prénoms |
+| `skyjo_online_v1` | partie en ligne → siège de cet appareil |
+| `foyer_session_v1` | session de connexion (partagée entre les jeux) |

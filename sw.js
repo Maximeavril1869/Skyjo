@@ -1,6 +1,6 @@
 /* Service worker : met l'application en cache pour jouer hors ligne. */
-var CACHE = 'skyjo-v1';
-var FILES = ['./', './index.html', './engine.js', './app.js', './manifest.webmanifest',
+var CACHE = 'skyjo-v2';
+var FILES = ['./', './index.html', './engine.js', './en-ligne.js', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
@@ -14,7 +14,7 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   var url = new URL(e.request.url);
-  if (url.origin !== location.origin) return;     // le service de mise en relation PeerJS ne passe pas par le cache
+  if (url.origin !== location.origin) return;     // les appels à Supabase (en ligne) ne passent pas par le cache
   e.respondWith(
     fetch(e.request).then(function (res) {
       var copy = res.clone();

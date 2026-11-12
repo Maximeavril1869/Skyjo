@@ -8,6 +8,9 @@
   var P = { mode: 'solo', bots: 1, level: 2, n1: 'Joueur 1', n2: 'Joueur 2' };
   var G = null, botTimer = null, screen = 'home';
   var BOT_DELAY = window.SKYJO_BOT_DELAY != null ? window.SKYJO_BOT_DELAY : 1000;
+  var EL = window.EnLigne, APP_VERSION = '2', OKEY = 'skyjo_online_v1';
+  var ONL = null;      // partie en ligne en cours : { id, me, version, pending[], pushing, status, watch, retry }
+  var OLD_MODES = /[?&]anciens\b/.test(location.search);   // anciens modes (passe-passe, face à face), masqués depuis le mode En ligne
 
   function $(id) { return document.getElementById(id); }
   function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -18,6 +21,7 @@
   (function () {
     var p = load(PKEY);
     if (p) for (var k in P) if (p[k] != null) P[k] = p[k];
+    if (!OLD_MODES && (P.mode === 'passe' || P.mode === 'duo')) P.mode = 'online';
   })();
   function botRange() { return P.mode === 'solo' ? [1, 7] : [0, 6]; }
   function clampBots() { var r = botRange(); P.bots = Math.max(r[0], Math.min(r[1], P.bots | 0)); }
@@ -31,8 +35,13 @@
     $('botsTitle').textContent = P.mode === 'solo' ? 'Adversaires ordinateur (1 à 7)' : 'Joueurs ordinateur en plus (0 à 6)';
     Array.prototype.forEach.call($('segLevel').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-l') === P.level); });
     $('optLevel').hidden = P.bots === 0;
-    $('n2').hidden = P.mode === 'solo';
-    $('namesTitle').textContent = P.mode === 'solo' ? 'Ton prénom' : 'Prénoms des deux joueurs';
+    $('n2').hidden = P.mode === 'solo' || P.mode === 'online';
+    $('namesTitle').textContent = P.mode === 'solo' || P.mode === 'online' ? 'Ton prénom' : 'Prénoms des deux joueurs';
+    Array.prototype.forEach.call(document.querySelectorAll('#segMode .old'), function (b) { b.hidden = !OLD_MODES; });
+    $('onlinePanel').hidden = P.mode !== 'online';
+    $('btnNew').textContent = P.mode === 'online' ? 'Créer une partie en ligne' : 'Nouvelle partie';
+    $('ver').textContent = 'Version ' + APP_VERSION;
+    if (P.mode === 'online') olRender(); else $('btnNew').disabled = false;
     $('n1').value = P.n1; $('n2').value = P.n2;
     $('btnResume').hidden = !(G && G.R && !G.over);
     save(PKEY, P);
@@ -51,6 +60,12 @@
   function goHome() {
     clearTimeout(botTimer);
     $('veil').hidden = true; $('roundOver').hidden = true;
+    if (ONL) {      // on quitte la partie en ligne (elle reste ouverte sur le serveur) : retour à la partie locale éventuelle
+      onlineStop();
+      G = null;
+      var sv = load(KEY);
+      if (sv && sv.R && sv.seats && sv.seats.length === sv.n && !sv.over) G = sv;
+    }
     show('home'); renderHome();
   }
 
@@ -76,6 +91,7 @@
 
   /* ---------- Mise en route ---------- */
   function newGame() {
+    if (P.mode === 'online') { onlineCreate(); return; }
     var seats = [], hum = P.mode === 'solo' ? 1 : 2, i;
     seats.push({ name: (P.n1 || '').trim() || 'Joueur 1', bot: 0 });
     if (hum === 2) seats.push({ name: (P.n2 || '').trim() || 'Joueur 2', bot: 0 });
@@ -87,7 +103,7 @@
     G = { mode: mode, seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, veil: null, roundNo: 0, over: false, note: '' };
     newRound();
   }
-  function newRound() {
+  function initRoundState() {      // état seulement (sans écran) : rejouable en ligne
     G.roundNo++;
     var R = E.newRound(G.n);
     R.counted = false;
@@ -95,6 +111,9 @@
     G.seats.forEach(function (s, p) {
       if (s.bot) E.aiInit(s.bot, R, p).forEach(function (i) { E.initFlip(R, p, i); });
     });
+  }
+  function newRound() {
+    initRoundState();
     show(G.mode === 'duo' ? 'duo' : 'game');
     step();
   }
@@ -109,6 +128,7 @@
   /* ---------- Boucle ---------- */
   function step() {
     var R = G.R;
+    if (!R) return;      // partie en ligne en attente du deuxième joueur
     clearTimeout(botTimer);
     if (R.phase === 'init' && E.initDone(R)) {
       E.startRound(R, G.nextStarter);
@@ -122,23 +142,58 @@
       G.over = E.gameOver(G.totals);
     }
     if (G.mode === 'solo') G.view = 0;
+    if (G.mode === 'online') G.view = ME();
     if (G.mode === 'passe' && R.phase !== 'over') {
       var target = null;
       if (R.phase === 'init') { var pend = pendingInit(); if (pend.length) target = pend[0]; }
       else if (isHuman(R.turn)) target = R.turn;
       if (target != null && target !== G.view && !G.veil) G.veil = { who: target };
     }
-    save(KEY, G);
+    if (G.mode !== 'online') save(KEY, G);      // une partie en ligne vit sur le serveur
     render();
     if (R.phase === 'over' || G.veil) return;
-    if (R.phase !== 'init' && !isHuman(R.turn)) botTimer = setTimeout(botMove, BOT_DELAY);
+    if (R.phase !== 'init' && !isHuman(R.turn) && (!ONL || ONL.me === 0)) botTimer = setTimeout(botMove, BOT_DELAY);   // en ligne : seul l'appareil qui a créé la partie joue les ordinateurs
   }
   function botMove() {
     var R = G && G.R;
     if (!R || R.phase === 'init' || R.phase === 'over' || isHuman(R.turn)) return;
-    E.aiTurn(G.seats[R.turn].bot, R);
-    G.note = describe(R.prevEvents);
+    jouer({ t: 'bot', turn: R.turn });
+  }
+  function ME() { return ONL ? ONL.me : 0; }
+  /* Un coup = une action rejouable sur un état plus récent (nécessaire en ligne quand deux appareils écrivent presque en même temps). */
+  function applyAction(a) {
+    var R = G && G.R, ok = false;
+    if (a.t === 'join') {
+      if (!G.online || G.online.joined) return false;
+      G.seats[1].name = a.name || 'Joueur 2'; G.seats[1].wait = 0; G.online.uids[1] = a.uid || null; G.online.joined = true;
+      initRoundState(); return true;
+    }
+    if (!R) return false;
+    switch (a.t) {
+      case 'init': ok = R.phase === 'init' && E.initFlip(R, a.p, a.i); if (ok) G.note = ''; return ok;
+      case 'deck': return R.phase === 'draw' && R.turn === a.p && E.drawDeck(R);
+      case 'take': return R.phase === 'draw' && R.turn === a.p && E.takeDiscard(R);
+      case 'place': ok = R.phase === 'place' && R.turn === a.p && E.place(R, a.i); if (ok) G.note = describe(R.prevEvents); return ok;
+      case 'flip': ok = R.phase === 'flip' && R.turn === a.p && E.flip(R, a.i); if (ok) G.note = describe(R.prevEvents); return ok;
+      case 'discard': return R.turn === a.p && E.discardDrawn(R);
+      case 'bot':
+        if (R.phase === 'init' || R.phase === 'over' || isHuman(R.turn) || R.turn !== a.turn) return false;
+        E.aiTurn(G.seats[R.turn].bot, R); G.note = describe(R.prevEvents); return true;
+      case 'next':
+        if (R.phase !== 'over' || G.over || a.round !== G.roundNo) return false;
+        initRoundState(); return true;
+      case 'again':
+        if (!G.over || a.round !== G.roundNo) return false;
+        G.totals = G.seats.map(function () { return 0; }); G.rounds = []; G.nextStarter = -1; G.over = false; G.roundNo = 0;
+        initRoundState(); return true;
+    }
+    return false;
+  }
+  function jouer(a) {
+    if (!applyAction(a)) return false;
     step();
+    if (ONL) { ONL.pending.push(a); flush(); }
+    return true;
   }
   function describe(evs) {
     if (!evs || !evs.length) return '';
@@ -163,40 +218,39 @@
   }
 
   /* ---------- Actions de l'utilisateur ---------- */
-  function humanTurn() { var R = G.R; return !G.veil && R.phase !== 'init' && R.phase !== 'over' && isHuman(R.turn); }
+  function humanTurn() { var R = G.R; return !G.veil && R.phase !== 'init' && R.phase !== 'over' && isHuman(R.turn) && (G.mode !== 'online' || R.turn === ME()); }
+  function mineP(p) { return G.mode === 'online' ? p === ME() : (G.mode === 'duo' || p === G.view); }   // cette grille est-elle la mienne sur cet appareil ?
   function onCell(p, i) {
     var R = G.R;
     if (G.veil || R.phase === 'over') return;
     if (R.phase === 'init') {
-      if (!isHuman(p)) return;
-      if (G.mode !== 'duo' && p !== G.view) return;
-      if (E.initFlip(R, p, i)) { G.note = ''; step(); }
+      if (!isHuman(p) || !mineP(p)) return;
+      jouer({ t: 'init', p: p, i: i });
       return;
     }
     if (!humanTurn() || p !== R.turn) return;
-    var ok = R.phase === 'place' ? E.place(R, i) : R.phase === 'flip' ? E.flip(R, i) : false;
-    if (ok) { G.note = describe(R.prevEvents); step(); }
+    if (R.phase === 'place') jouer({ t: 'place', p: p, i: i });
+    else if (R.phase === 'flip') jouer({ t: 'flip', p: p, i: i });
   }
   function onDeck() {
     if (!humanTurn() || G.R.phase !== 'draw') return;
-    E.drawDeck(G.R); step();
+    jouer({ t: 'deck', p: G.R.turn });
   }
   function onDiscard() {
     if (!humanTurn()) return;
     var R = G.R;
-    if (R.phase === 'draw') { E.takeDiscard(R); step(); }
-    else if (E.canDiscardDrawn(R)) { E.discardDrawn(R); step(); }
+    if (R.phase === 'draw') jouer({ t: 'take', p: R.turn });
+    else if (E.canDiscardDrawn(R)) jouer({ t: 'discard', p: R.turn });
   }
   function onDiscardDrawn() {
-    if (humanTurn() && E.discardDrawn(G.R)) step();
+    if (humanTurn() && E.canDiscardDrawn(G.R)) jouer({ t: 'discard', p: G.R.turn });
   }
 
   /* ---------- Dessin ---------- */
   function canFnFor(v) {
     var R = G.R;
     if (R.phase === 'init') {
-      if (!isHuman(v)) return null;
-      if (G.mode !== 'duo' && v !== G.view) return null;
+      if (!isHuman(v) || !mineP(v)) return null;
       if (E.upCount(R, v) >= 2) return null;
       return function (c) { return !c.up && !c.gone; };
     }
@@ -209,7 +263,7 @@
     var R = G.R, out = { t: '', alert: false };
     if (R.phase === 'init') {
       if (isHuman(v) && E.upCount(R, v) < 2) { out.t = 'Retourne 2 cartes (' + E.upCount(R, v) + '/2)'; out.alert = true; }
-      else out.t = G.mode === 'duo' ? 'En attente de l\'autre joueur…' : 'On y va…';
+      else out.t = G.mode === 'duo' ? 'En attente de l\'autre joueur…' : G.mode === 'online' ? 'En attente des autres joueurs…' : 'On y va…';
     } else if (R.turn === v && isHuman(v)) {
       out.alert = true;
       if (R.phase === 'draw') out.t = 'À toi : pioche ou prends la défausse';
@@ -263,7 +317,7 @@
   function renderSolo(R, lm, pc) {
     var v = G.view, ins = instruction(v), h = '', p;
     $('roundTitle').textContent = 'Manche ' + G.roundNo;
-    $('roundSub').textContent = R.endedBy >= 0 && R.phase !== 'over' ? 'Dernier tour' : 'Fin de partie à 100 points';
+    $('roundSub').textContent = (ONL ? 'En ligne · ' + ONL.id + ' · ' : '') + (R.endedBy >= 0 && R.phase !== 'over' ? 'Dernier tour' : 'Fin de partie à 100 points');
     for (p = 0; p < G.n; p++) if (p !== v) h += oppHTML(p, lm);
     $('opps').innerHTML = h;
     $('opps').style.display = G.n > 1 ? '' : 'none';
@@ -375,9 +429,9 @@
     if (a && G) {
       var act = a.getAttribute('data-act');
       if (act === 'discardDrawn') onDiscardDrawn();
-      else if (act === 'next') { $('roundOver').hidden = true; newRound(); }
-      else if (act === 'again') { $('roundOver').hidden = true; beginGame(G.mode, G.seats.map(function (s) { return { name: s.name, bot: s.bot }; })); }
-      else if (act === 'home') { G = null; try { localStorage.removeItem(KEY); } catch (e) { /* rien */ } goHome(); }
+      else if (act === 'next') { if (ONL) { jouer({ t: 'next', round: G.roundNo }); } else { $('roundOver').hidden = true; newRound(); } }
+      else if (act === 'again') { if (ONL) jouer({ t: 'again', round: G.roundNo }); else { $('roundOver').hidden = true; beginGame(G.mode, G.seats.map(function (s) { return { name: s.name, bot: s.bot }; })); } }
+      else if (act === 'home') { if (ONL) { goHome(); return; } G = null; try { localStorage.removeItem(KEY); } catch (e) { /* rien */ } goHome(); }
     }
   });
   $('segMode').addEventListener('click', function (ev) {
@@ -407,6 +461,163 @@
   $('btnAction').addEventListener('click', onDiscardDrawn);
   $('pileDeck').addEventListener('click', onDeck); $('duoPileDeck').addEventListener('click', onDeck);
   $('pileDiscard').addEventListener('click', onDiscard); $('duoPileDiscard').addEventListener('click', onDiscard);
+
+  /* ---------- En ligne ---------- */
+  function olMsg(t) { var e = $('olErr'); e.hidden = !t; e.textContent = t || ''; }
+  function olError(e) {
+    if (e && e.kind === 'auth') { olMsg('Session expirée : reconnecte-toi.'); olRender(); }
+    else if (e && e.kind === 'reseau') olMsg('Pas de réseau : impossible de joindre le service pour l\'instant.');
+    else olMsg('Erreur : ' + (e && e.message ? e.message : 'inconnue'));
+  }
+  function olRender() {
+    var inn = EL.connecte();
+    $('olLogin').hidden = inn; $('olIn').hidden = !inn;
+    $('btnNew').disabled = !inn;
+    if (inn) { $('olWho').textContent = EL.email(); olList(); }
+  }
+  function olList() {
+    EL.liste('skyjo').then(function (a) {
+      var h = '';
+      a.forEach(function (r) {
+        h += '<div class="olitem"><div class="t"><b>' + esc(r.id) + '</b><small>' + esc(r.titre || '') + '</small></div>' +
+          '<button data-ol="resume" data-id="' + esc(r.id) + '">Reprendre</button><button data-ol="del" data-id="' + esc(r.id) + '" aria-label="Supprimer la partie ' + esc(r.id) + '">✕</button></div>';
+      });
+      $('olList').innerHTML = h || '<p class="olwho" style="margin:0">Aucune pour l\'instant.</p>';
+    }).catch(olError);
+  }
+  function getMap() { return load(OKEY) || {}; }
+  function setMap(id, me) { var m = getMap(); m[id] = me; save(OKEY, m); }
+  function titre() {
+    return G.seats.filter(function (s) { return !s.bot && !s.wait; }).map(function (s) { return s.name; }).join(' et ') + ' · ' + (G.R ? 'manche ' + G.roundNo : 'en attente') + (G.over ? ' (terminée)' : '');
+  }
+  function onlineStart(id, me, version) {
+    onlineStop();
+    ONL = { id: id, me: me, version: version, pending: [], pushing: false, status: 'ok', watch: null, retry: null };
+    setMap(id, me);
+    ONL.watch = EL.surveiller(id, function () { return ONL ? ONL.version : 0; }, onRemote, onStatus);
+  }
+  function onlineStop() {
+    if (ONL) { if (ONL.watch) ONL.watch.stop(); clearTimeout(ONL.retry); }
+    ONL = null;
+    $('offbar').hidden = true; $('wait').hidden = true;
+  }
+  function onStatus(st) {
+    if (!ONL) return;
+    ONL.status = st;
+    $('offbar').hidden = st !== 'hors-ligne';
+    if (st === 'supprimee') { var m = 'Cette partie a été supprimée.'; goHome(); olMsg(m); return; }
+    if (st === 'auth') { goHome(); olError({ kind: 'auth' }); return; }
+    if (st === 'ok' && ONL.pending.length && !ONL.pushing) flush();
+  }
+  function onlineShow() {       // affiche G selon son avancement : salle d'attente ou partie
+    if (!G.R) { $('waitCode').textContent = ONL.id; $('wait').hidden = false; return; }
+    $('wait').hidden = true;
+    if (screen !== 'game') show('game');
+    step();
+  }
+  function onRemote() {         // la version distante a changé : on la reprend, sauf si on a des coups pas encore envoyés
+    var o = ONL;
+    if (!o || o.pushing || o.pending.length) return;
+    return EL.lire(o.id).then(function (row) {
+      if (ONL !== o || !row || row.version <= o.version || o.pending.length || o.pushing) return;
+      G = row.etat; o.version = row.version;
+      onlineShow();
+    });
+  }
+  function flush() {
+    var o = ONL;
+    if (!o || o.pushing || !o.pending.length) return;
+    o.pushing = true;
+    var n = o.pending.length, retry = false;
+    EL.ecrire(o.id, o.version, G, titre()).then(function (nv) {
+      if (ONL !== o) return;
+      if (nv) { o.version = nv; o.pending = o.pending.slice(n); if (o.status === 'hors-ligne') onStatus('ok'); return; }
+      // conflit : l'autre appareil a écrit avant nous. On reprend son état et on rejoue nos coups dessus.
+      return EL.lire(o.id).then(function (row) {
+        if (ONL !== o) return;
+        if (!row) { o.pending = []; return; }
+        var mine = o.pending, refused = false;
+        o.pending = []; G = row.etat; o.version = row.version;
+        mine.forEach(function (a) { if (jouerSans(a)) o.pending.push(a); else if (a.t === 'join') refused = true; });
+        if (refused) { goHome(); olMsg('Cette partie a déjà ses deux joueurs.'); return; }
+        if (G.R) step(); else onlineShow();
+      });
+    }).catch(function (e) {
+      if (ONL !== o) return;
+      retry = true;
+      onStatus(e.kind === 'reseau' ? 'hors-ligne' : 'erreur');
+      if (e.kind === 'auth') return;
+      clearTimeout(o.retry);
+      o.retry = setTimeout(function () { if (ONL === o) { o.pushing = false; flush(); } }, 2000);
+    }).then(function () {
+      if (ONL !== o || retry) return;
+      o.pushing = false;
+      if (o.pending.length) flush();
+    });
+  }
+  function jouerSans(a) { return applyAction(a); }      // rejoue un coup sur l'état repris du serveur (l'écran est redessiné ensuite)
+  function onlineCreate() {
+    if (!EL.connecte()) { olMsg('Connecte-toi d\'abord.'); return; }
+    olMsg('');
+    var nm = (P.n1 || '').trim() || 'Joueur 1', seats = [{ name: nm, bot: 0 }, { name: '…', bot: 0, wait: 1 }], i;
+    for (i = 0; i < P.bots; i++) seats.push({ name: BOTS[i], bot: P.level });
+    var z = seats.map(function () { return 0; });
+    var g = { mode: 'online', seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, veil: null, roundNo: 0, over: false, note: '', online: { uids: [EL.uid(), null], joined: false } };
+    EL.creer('skyjo', g, nm + ' · en attente').then(function (r) {
+      G = g; onlineStart(r.id, 0, r.version); show('game'); onlineShow();
+    }).catch(olError);
+  }
+  function seatFor(id, g) {
+    var m = getMap(), me = m[id];
+    if (me == null && g.online) { var k = g.online.uids.indexOf(EL.uid()); if (k >= 0) me = k; }
+    return me;
+  }
+  function onlineJoin(code) {
+    code = (code || '').trim().toUpperCase();
+    if (code.length !== 4) { olMsg('Le code a 4 lettres.'); return; }
+    olMsg('');
+    EL.lire(code).then(function (row) {
+      if (!row || row.jeu !== 'skyjo') { olMsg('Code inconnu.'); return; }
+      var g = row.etat, me = seatFor(code, g);
+      if (me != null && (g.online.joined || me === 0)) { onlineResumeRow(row, me); return; }
+      if (g.online.joined) { olMsg('Cette partie a déjà ses deux joueurs.'); return; }
+      G = g; onlineStart(code, 1, row.version); show('game');
+      jouer({ t: 'join', name: (P.n1 || '').trim() || 'Joueur 2', uid: EL.uid() });
+    }).catch(olError);
+  }
+  function onlineResumeRow(row, me) {
+    G = row.etat; onlineStart(row.id, me, row.version); show('game'); onlineShow();
+  }
+  function onlineResume(id) {
+    olMsg('');
+    EL.lire(id).then(function (row) {
+      if (!row) { olMsg('Partie introuvable.'); olList(); return; }
+      var me = seatFor(id, row.etat);
+      onlineResumeRow(row, me != null ? me : 0);
+    }).catch(olError);
+  }
+  window.addEventListener('offline', function () { if (ONL) onStatus('hors-ligne'); });
+  window.addEventListener('online', function () { if (ONL && ONL.watch) ONL.watch.poke(); });
+  $('btnOlLogin').addEventListener('click', function () {
+    olMsg('');
+    EL.login($('olEmail').value.trim(), $('olPwd').value).then(function () { $('olPwd').value = ''; olRender(); }).catch(function (e) {
+      olMsg(e.kind === 'bad' ? 'E-mail ou mot de passe refusé.' : e.kind === 'reseau' ? 'Pas de réseau.' : 'Erreur : ' + e.message);
+    });
+  });
+  $('btnOlLogout').addEventListener('click', function () { EL.logout(); olMsg(''); olRender(); });
+  $('btnOlJoin').addEventListener('click', function () { onlineJoin($('olCode').value); });
+  $('olList').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-ol]'); if (!b) return;
+    var id = b.getAttribute('data-id');
+    if (b.getAttribute('data-ol') === 'resume') onlineResume(id);
+    else if (confirm('Supprimer la partie ' + id + ' pour les deux joueurs ?')) EL.supprimer(id).then(olList).catch(olError);
+  });
+  $('btnWaitCancel').addEventListener('click', function () {
+    var id = ONL && ONL.id;
+    goHome();
+    if (id && confirm('Supprimer la partie ' + id + ' ?')) EL.supprimer(id).catch(function () { /* déjà partie */ });
+  });
+  $('btnWaitHome').addEventListener('click', goHome);
 
   /* ---------- Démarrage ---------- */
   (function () {
