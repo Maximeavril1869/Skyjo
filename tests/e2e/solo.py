@@ -32,18 +32,12 @@ with sync_playwright() as p:
                 print('Partie terminée, manches :', rounds + 1); break
             rounds += 1
             pg.locator('#roBottom [data-act="next"]').click(); continue
-        if pg.is_visible('#veil:not([hidden])'):
-            pg.click('#btnVeil'); continue
         # case cliquable la plus basse du joueur (siège du bas / zone principale)
-        scope = '#seat0' if mode == 'duo' else '#mine'
-        cells = pg.locator(scope + ' .card.can')
+        cells = pg.locator('#mine .card.can')
         if cells.count():
             if shot and steps == 6: pg.screenshot(path=shot + '_play.png')
             cells.nth(random.randrange(cells.count())).click(); continue
-        # duo : le joueur du haut
-        if mode == 'duo' and pg.locator('#seat1 .card.can').count():
-            c = pg.locator('#seat1 .card.can'); c.nth(random.randrange(c.count())).click(); continue
-        pile = '#duoPileDeck' if mode == 'duo' else '#pileDeck'
+        pile = '#pileDeck'
         if pg.locator(pile + '.can').count():
             pg.click(pile); continue
     print('erreurs :', errs[:5], 'étapes :', steps)

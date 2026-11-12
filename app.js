@@ -5,13 +5,12 @@
   var KEY = 'skyjo_partie_v1', PKEY = 'skyjo_prefs_v1';
   var BOTS = ['Luna', 'Orion', 'Nova', 'Zéphyr', 'Iris', 'Atlas', 'Mila'];
   var LEVELS = { 1: 'débutant', 2: 'normal', 3: 'fort' };
-  var P = { mode: 'solo', bots: 1, level: 2, n1: 'Joueur 1', n2: 'Joueur 2' };
+  var P = { mode: 'solo', bots: 1, level: 2, n1: 'Joueur 1' };
   var G = null, botTimer = null, screen = 'home';
   var BOT_DELAY = window.SKYJO_BOT_DELAY != null ? window.SKYJO_BOT_DELAY : 1000;
-  var EL = window.EnLigne, APP_VERSION = '3', OKEY = 'skyjo_online_v1';
+  var EL = window.EnLigne, APP_VERSION = '4', OKEY = 'skyjo_online_v1';
   var PL = null;       // plateau (affichage seul) : { id, version, watch }
   var ONL = null;      // partie en ligne en cours : { id, me, version, pending[], pushing, status, watch, retry }
-  var OLD_MODES = /[?&]anciens\b/.test(location.search);   // anciens modes (passe-passe, face à face), masqués depuis le mode En ligne
 
   function $(id) { return document.getElementById(id); }
   function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -22,7 +21,7 @@
   (function () {
     var p = load(PKEY);
     if (p) for (var k in P) if (p[k] != null) P[k] = p[k];
-    if (!OLD_MODES && (P.mode === 'passe' || P.mode === 'duo')) P.mode = 'online';
+    if (P.mode !== 'solo' && P.mode !== 'online') P.mode = 'online';
   })();
   function botRange() { return P.mode === 'solo' ? [1, 7] : [0, 6]; }
   function clampBots() { var r = botRange(); P.bots = Math.max(r[0], Math.min(r[1], P.bots | 0)); }
@@ -36,14 +35,11 @@
     $('botsTitle').textContent = P.mode === 'solo' ? 'Adversaires ordinateur (1 à 7)' : 'Joueurs ordinateur en plus (0 à 6)';
     Array.prototype.forEach.call($('segLevel').children, function (b) { b.classList.toggle('on', +b.getAttribute('data-l') === P.level); });
     $('optLevel').hidden = P.bots === 0;
-    $('n2').hidden = P.mode === 'solo' || P.mode === 'online';
-    $('namesTitle').textContent = P.mode === 'solo' || P.mode === 'online' ? 'Ton prénom' : 'Prénoms des deux joueurs';
-    Array.prototype.forEach.call(document.querySelectorAll('#segMode .old'), function (b) { b.hidden = !OLD_MODES; });
     $('onlinePanel').hidden = P.mode !== 'online';
     $('btnNew').textContent = P.mode === 'online' ? 'Créer une partie en ligne' : 'Nouvelle partie';
     $('ver').textContent = 'Version ' + APP_VERSION;
     if (P.mode === 'online') olRender(); else $('btnNew').disabled = false;
-    $('n1').value = P.n1; $('n2').value = P.n2;
+    $('n1').value = P.n1;
     $('btnResume').hidden = !(G && G.R && !G.over);
     save(PKEY, P);
   }
@@ -55,12 +51,12 @@
 
   function show(name) {
     screen = name;
-    ['home', 'game', 'duo', 'plateau'].forEach(function (s) { $(s).hidden = s !== name; });
+    ['home', 'game', 'plateau'].forEach(function (s) { $(s).hidden = s !== name; });
     layout();
   }
   function goHome() {
     clearTimeout(botTimer);
-    $('veil').hidden = true; $('roundOver').hidden = true;
+    $('roundOver').hidden = true;
     if (PL) { plStop(); G = null; var s0 = load(KEY); if (s0 && s0.R && s0.seats && s0.seats.length === s0.n && !s0.over) G = s0; }
     if (ONL) {      // on quitte la partie en ligne (elle reste ouverte sur le serveur) : retour à la partie locale éventuelle
       onlineStop();
@@ -94,29 +90,28 @@
   /* ---------- Mise en route ---------- */
   function newGame() {
     if (P.mode === 'online') { onlineCreate(); return; }
-    var seats = [], hum = P.mode === 'solo' ? 1 : 2, i;
+    var seats = [], i;
     seats.push({ name: (P.n1 || '').trim() || 'Joueur 1', bot: 0 });
-    if (hum === 2) seats.push({ name: (P.n2 || '').trim() || 'Joueur 2', bot: 0 });
     for (i = 0; i < P.bots; i++) seats.push({ name: BOTS[i], bot: P.level });
     beginGame(P.mode, seats);
   }
   function beginGame(mode, seats) {
     var z = seats.map(function () { return 0; });
-    G = { mode: mode, seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, veil: null, roundNo: 0, over: false, note: '' };
+    G = { mode: mode, seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, roundNo: 0, over: false, note: '' };
     newRound();
   }
   function initRoundState() {      // état seulement (sans écran) : rejouable en ligne
     G.roundNo++;
     var R = E.newRound(G.n);
     R.counted = false;
-    G.R = R; G.view = 0; G.veil = null; G.note = '';
+    G.R = R; G.view = 0; G.note = '';
     G.seats.forEach(function (s, p) {
       if (s.bot) E.aiInit(s.bot, R, p).forEach(function (i) { E.initFlip(R, p, i); });
     });
   }
   function newRound() {
     initRoundState();
-    show(G.mode === 'duo' ? 'duo' : 'game');
+    show('game');
     step();
   }
   function isHuman(p) { return G.seats[p].bot === 0; }
@@ -145,15 +140,9 @@
     }
     if (G.mode === 'solo') G.view = 0;
     if (G.mode === 'online') G.view = ME();
-    if (G.mode === 'passe' && R.phase !== 'over') {
-      var target = null;
-      if (R.phase === 'init') { var pend = pendingInit(); if (pend.length) target = pend[0]; }
-      else if (isHuman(R.turn)) target = R.turn;
-      if (target != null && target !== G.view && !G.veil) G.veil = { who: target };
-    }
     if (G.mode !== 'online') save(KEY, G);      // une partie en ligne vit sur le serveur
     render();
-    if (R.phase === 'over' || G.veil) return;
+    if (R.phase === 'over') return;
     if (R.phase !== 'init' && !isHuman(R.turn) && (!ONL || ONL.me === 0)) botTimer = setTimeout(botMove, BOT_DELAY);   // en ligne : seul l'appareil qui a créé la partie joue les ordinateurs
   }
   function botMove() {
@@ -220,11 +209,11 @@
   }
 
   /* ---------- Actions de l'utilisateur ---------- */
-  function humanTurn() { var R = G.R; return !G.veil && R.phase !== 'init' && R.phase !== 'over' && isHuman(R.turn) && (G.mode !== 'online' || R.turn === ME()); }
-  function mineP(p) { return G.mode === 'online' ? p === ME() : (G.mode === 'duo' || p === G.view); }   // cette grille est-elle la mienne sur cet appareil ?
+  function humanTurn() { var R = G.R; return R.phase !== 'init' && R.phase !== 'over' && isHuman(R.turn) && (G.mode !== 'online' || R.turn === ME()); }
+  function mineP(p) { return G.mode === 'online' ? p === ME() : p === G.view; }   // cette grille est-elle la mienne sur cet appareil ?
   function onCell(p, i) {
     var R = G.R;
-    if (G.veil || R.phase === 'over') return;
+    if (R.phase === 'over') return;
     if (R.phase === 'init') {
       if (!isHuman(p) || !mineP(p)) return;
       jouer({ t: 'init', p: p, i: i });
@@ -265,7 +254,7 @@
     var R = G.R, out = { t: '', alert: false };
     if (R.phase === 'init') {
       if (isHuman(v) && E.upCount(R, v) < 2) { out.t = 'Retourne 2 cartes (' + E.upCount(R, v) + '/2)'; out.alert = true; }
-      else out.t = G.mode === 'duo' ? 'En attente de l\'autre joueur…' : G.mode === 'online' ? 'En attente des autres joueurs…' : 'On y va…';
+      else out.t = G.mode === 'online' ? 'En attente des autres joueurs…' : 'On y va…';
     } else if (R.turn === v && isHuman(v)) {
       out.alert = true;
       if (R.phase === 'draw') out.t = 'À toi : pioche ou prends la défausse';
@@ -305,13 +294,7 @@
   function render() {
     if (!G || !G.R) return;
     var R = G.R, lm = lastMap(), pc = pileHTML();
-    $('veil').hidden = !G.veil;
-    if (G.veil) {
-      $('veilTitle').textContent = 'À ' + name(G.veil.who) + ' de jouer';
-      $('veilText').textContent = 'Passe l\'iPad à ' + name(G.veil.who) + ', puis touche le bouton.';
-      $('btnVeil').textContent = 'C\'est moi';
-    }
-    if (G.mode === 'duo') renderDuo(R, lm, pc); else renderSolo(R, lm, pc);
+    renderSolo(R, lm, pc);
     layout();
     if (R.phase === 'over') showOver(); else $('roundOver').hidden = true;
   }
@@ -333,25 +316,6 @@
     $('mine').innerHTML = '<div class="who"><b>' + esc(name(v)) + '</b><span>Total ' + G.totals[v] + ' pts · cartes visibles ' + E.visibleSum(R, v) + '</span></div>' + board(v, canFnFor(v), lm[v], false);
     var b = $('btnAction'), canD = humanTurn() && R.turn === v && E.canDiscardDrawn(R);
     b.hidden = !canD; b.textContent = 'Défausser et retourner une carte';
-  }
-
-  function renderDuo(R, lm, pc) {
-    var s, h = '', p;
-    for (s = 0; s < 2; s++) {
-      var el = $('seat' + s), ins = instruction(s), sn = smallNote();
-      el.classList.toggle('turn', R.phase !== 'over' && R.phase !== 'init' && R.turn === s);
-      var hand = (R.turn === s && R.hand != null) ? faceHTML(R.hand, ' last') + '<span class="lbl">' + (R.src === 'discard' ? 'Prise dans la défausse' : 'Piochée') + '</span>' : '';
-      el.querySelector('.seathead').innerHTML = '<div class="who"><b>' + esc(name(s)) + '</b><span>Total ' + G.totals[s] + ' pts · visibles ' + E.visibleSum(R, s) + '</span></div><div class="handslot">' + hand + '</div>';
-      el.querySelector('.mine').innerHTML = board(s, canFnFor(s), lm[s], false);
-      var sm = el.querySelector('.seatmsg'); sm.className = 'seatmsg' + (ins.alert ? ' alert' : '');
-      sm.innerHTML = '<span>' + esc(ins.t) + '</span>' + (sn ? '<small>' + esc(sn) + '</small>' : '');
-      var canD = humanTurn() && R.turn === s && E.canDiscardDrawn(R);
-      el.querySelector('.seatbtn').innerHTML = canD ? '<button class="btn sun" data-act="discardDrawn">Défausser et retourner une carte</button>' : '';
-    }
-    for (p = 2; p < G.n; p++) h += oppHTML(p, lm);
-    $('botsRow').innerHTML = h;
-    $('duoDeckVisual').innerHTML = pc.deck; $('duoDiscardVisual').innerHTML = pc.discard;
-    pileState($('duoPileDeck'), $('duoPileDiscard'));
   }
 
   /* ---------- Fin de manche / de partie ---------- */
@@ -388,11 +352,8 @@
     return h;
   }
   function showOver() {
-    var ro = $('roundOver'), duo = G.mode === 'duo';
-    ro.hidden = false; ro.classList.toggle('duo', duo);
-    ro.querySelector('.half.top').hidden = !duo;
+    $('roundOver').hidden = false;
     $('roBottom').innerHTML = overHTML();
-    if (duo) $('roTop').innerHTML = overHTML();
   }
 
   /* ---------- Mise en page ---------- */
@@ -400,13 +361,7 @@
     if (!G || screen === 'home') return;
     if (screen === 'plateau') { plLayout(); return; }
     var W = window.innerWidth, H = window.innerHeight - 8, root = document.documentElement.style, k, cw, mw;
-    if (G.mode === 'duo') {
-      k = Math.max(0, G.n - 2);
-      mw = k ? Math.max(10, Math.min(18, Math.floor((W * 0.5 / Math.min(k, 3) - 20) / 4.3))) : 18;
-      var rows = Math.ceil(k / 3), botsH = k ? rows * (4.55 * mw + 34) : 0, mid = Math.max(112, botsH + 8);
-      var avail = (H - mid) / 2 - 12 - 62 - 40 - 46 - 24;
-      cw = Math.min((W - 56) / 4.3, avail / 4.55, 104);
-    } else {
+    {
       k = G.n - 1;
       var oc = k <= 3 ? Math.max(1, k) : (W >= 1000 ? k : 4), rws = Math.ceil(k / oc);
       mw = Math.max(12, Math.min(26, Math.floor(((W - 24 - (oc - 1) * 8) / oc - 16) / 4.3)));
@@ -446,9 +401,8 @@
   $('segBots').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b) { P.bots = +b.getAttribute('data-b'); renderHome(); } });
   $('segLevel').addEventListener('click', function (ev) { var b = ev.target.closest('button'); if (b) { P.level = +b.getAttribute('data-l'); renderHome(); } });
   $('n1').addEventListener('input', function () { P.n1 = this.value; save(PKEY, P); });
-  $('n2').addEventListener('input', function () { P.n2 = this.value; save(PKEY, P); });
-  $('btnNew').addEventListener('click', function () { P.n1 = $('n1').value; P.n2 = $('n2').value; save(PKEY, P); newGame(); });
-  $('btnResume').addEventListener('click', function () { show(G.mode === 'duo' ? 'duo' : 'game'); step(); });
+  $('btnNew').addEventListener('click', function () { P.n1 = $('n1').value; save(PKEY, P); newGame(); });
+  $('btnResume').addEventListener('click', function () { show('game'); step(); });
   $('btnRules').addEventListener('click', function () { $('dlgRules').showModal(); });
   $('btnMenuRules').addEventListener('click', function () { $('dlgMenu').close(); $('dlgRules').showModal(); });
   function openScores() {
@@ -456,14 +410,13 @@
     $('scoresBody').innerHTML = G.rounds.length ? scoresTable('all') : '<p>Aucune manche terminée pour l\'instant.</p>';
     $('dlgScores').showModal();
   }
-  $('btnScores').addEventListener('click', openScores); $('btnScoresD').addEventListener('click', openScores);
+  $('btnScores').addEventListener('click', openScores);
   function openMenu() { $('dlgMenu').showModal(); }
-  $('btnMenu').addEventListener('click', openMenu); $('btnMenuD').addEventListener('click', openMenu);
+  $('btnMenu').addEventListener('click', openMenu);
   $('btnQuit').addEventListener('click', function () { $('dlgMenu').close(); goHome(); });
-  $('btnVeil').addEventListener('click', function () { if (G && G.veil) { G.view = G.veil.who; G.veil = null; step(); } });
   $('btnAction').addEventListener('click', onDiscardDrawn);
-  $('pileDeck').addEventListener('click', onDeck); $('duoPileDeck').addEventListener('click', onDeck);
-  $('pileDiscard').addEventListener('click', onDiscard); $('duoPileDiscard').addEventListener('click', onDiscard);
+  $('pileDeck').addEventListener('click', onDeck);
+  $('pileDiscard').addEventListener('click', onDiscard);
 
   /* ---------- En ligne ---------- */
   function olMsg(t) { var e = $('olErr'); e.hidden = !t; e.textContent = t || ''; }
@@ -565,7 +518,7 @@
     var nm = (P.n1 || '').trim() || 'Joueur 1', seats = [{ name: nm, bot: 0 }, { name: '…', bot: 0, wait: 1 }], i;
     for (i = 0; i < P.bots; i++) seats.push({ name: BOTS[i], bot: P.level });
     var z = seats.map(function () { return 0; });
-    var g = { mode: 'online', seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, veil: null, roundNo: 0, over: false, note: '', online: { uids: [EL.uid(), null], joined: false } };
+    var g = { mode: 'online', seats: seats, n: seats.length, totals: z, rounds: [], R: null, nextStarter: -1, view: 0, roundNo: 0, over: false, note: '', online: { uids: [EL.uid(), null], joined: false } };
     EL.creer('skyjo', g, nm + ' · en attente').then(function (r) {
       G = g; onlineStart(r.id, 0, r.version); show('game'); onlineShow();
     }).catch(olError);
@@ -695,7 +648,7 @@
   /* ---------- Démarrage ---------- */
   (function () {
     var s = load(KEY);
-    if (s && s.R && s.seats && s.seats.length === s.n && !s.over) G = s;
+    if (s && s.mode === 'solo' && s.R && s.seats && s.seats.length === s.n && !s.over) G = s;
     renderHome();
     show('home');
   })();

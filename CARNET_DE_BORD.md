@@ -4,13 +4,13 @@ Journal de toutes les opérations du projet, pour pouvoir le reprendre sans rien
 
 ## État courant
 
-- Modes : contre l'ordinateur, et **En ligne** (2 humains max, chacun son appareil, ordinateurs en complément). Passe-passe et face à face masqués (`?anciens=1`). 2 à 8 joueurs, ordinateur à 3 niveaux. Testé en navigateur simulé uniquement.
+- Modes : contre l'ordinateur, et **En ligne** (2 humains max, chacun son appareil, ordinateurs en complément). Passe-passe et face à face **supprimés** (version 4). 2 à 8 joueurs, ordinateur à 3 niveaux. Testé en navigateur simulé uniquement.
 - **Non testé sur un vrai iPad.**
 - Pas de mode téléphone pour l'instant (voir « À faire »).
 
 ## À faire
 
-- **Skyjo = jeu pilote du mode En ligne** : créer la table `parties` dans Supabase (SQL fourni à l'auteur), créer le compte de la deuxième personne, puis valider sur iPhone, iPad et téléphone Android. Ensuite : supprimer définitivement passe-passe et face à face, et déployer `en-ligne.js` dans les autres jeux, un dépôt à la fois.
+- **Skyjo validé sur de vrais appareils (2 parties jouées)** : déployer `en-ligne.js` dans les autres jeux, un dépôt à la fois (5 Rois, 6 qui prend, Flip 7, Le Contrat, Bataille navale — mode téléphone PeerJS remplacé —, EnqueteManoir).
 
 - Tester sur l'iPad et corriger ce qui sort des essais réels (taille des cartes, confort du face à face).
 - Étendre le mode « iPad = plateau, téléphone = main » à Skyjo une fois la liaison validée sur la Bataille navale.
@@ -52,3 +52,7 @@ Opérations :
 Plateau (même jour, version 3) : sur demande, l'iPad peut servir de plateau commun quand les joueurs sont ensemble, en **affichage seul** (décision de l'auteur) ; les téléphones jouent. Skyjo n'ayant pas de main cachée, le téléphone ne sert qu'à jouer sa grille. Ajouts : écran `#plateau`, bouton « Afficher en plateau (iPad) », 11 vérifications (53 au total : code inconnu, aucune carte cliquable, aucune valeur cachée, pas de siège pris, suit la partie, hors ligne, quitter, suppression).
 
 Limites : pas testé avec le vrai Supabase ni sur de vrais appareils.
+
+## 2026-11-12 (suite) — Version 4 : suppression des anciens modes
+
+Après validation réelle (2 parties jouées sur appareils), suppression de « on se passe l'appareil » et « face à face » : écran `#duo`, voile, champ du deuxième prénom, `renderDuo`, `?anciens=1`, styles associés. Une partie locale enregistrée dans un ancien mode est ignorée. Le plateau est conservé (utile surtout avec beaucoup d'ordinateurs). Tests : moteur 12/12, solo, en ligne 52 vérifications. Cache `skyjo-v4`.

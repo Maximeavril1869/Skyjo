@@ -5,14 +5,14 @@ Application web statique, sans compilation ni serveur : HTML + JavaScript « cla
 ## Fichiers
 
 ```
-index.html            Écrans (accueil, partie, face à face), styles, modales (règles, scores, menu), voile et fin de manche
+index.html            Écrans (accueil, partie, plateau), styles, modales (règles, scores, menu), salle d'attente et fin de manche
 engine.js             Moteur pur : cartes, déroulement d'une manche, scores, ordinateur (3 niveaux). Testable sous Node
 app.js                Interface : accueil, modes, mise en page, rendu, sauvegarde, logique du mode en ligne
 en-ligne.js           Brique commune « En ligne » (copiée telle quelle dans les autres jeux) : connexion, parties, synchro
 sw.js                 Service worker : cache hors ligne (réseau d'abord, cache en secours)
 manifest.webmanifest, icons/    PWA
 tests/engine.test.js            Tests du moteur (node --test)
-tests/e2e/solo.py               Parcours navigateur (Playwright) : solo, passe, duo
+tests/e2e/solo.py               Parcours navigateur (Playwright) : solo
 tests/e2e/en_ligne.py           Deux appareils simulés, faux Supabase en mémoire
 ```
 
@@ -45,25 +45,24 @@ Force mesurée en duels (tests) : le normal gagne ~88 % des manches contre le d�
 ## État de partie (`G`, sauvegardé sous `skyjo_partie_v1`)
 
 ```
-mode          'solo' | 'passe' | 'duo'
+mode          'solo' | 'online'
 seats         [{ name, bot }]  bot = 0 pour un humain, sinon niveau 1 à 3 ; humains en premier
 totals        totaux cumulés ; rounds : [{ s: scores, d: joueur doublé ou -1 }]
 R, roundNo    manche courante
 nextStarter   celui qui a fini la manche précédente (commence la suivante) ; -1 = plus forte somme initiale
-view, veil    mode passe : joueur affiché, écran « passe l'iPad »
+view         siège affiché en bas (0 en solo, siège de l'appareil en ligne)
 note, over    dernier coup décrit, partie terminée
 ```
 
-`step()` est la boucle centrale : lance la manche quand tous ont retourné 2 cartes, comptabilise la fin de manche, gère le voile du mode passe, sauvegarde, dessine, puis programme le coup de l'ordinateur (1 s).
+`step()` est la boucle centrale : lance la manche quand tous ont retourné 2 cartes, comptabilise la fin de manche, sauvegarde, dessine, puis programme le coup de l'ordinateur (1 s).
 
 ## Écrans
 
 | Écran | Mode | Contenu |
 |---|---|---|
 | `#home` | tous | mode, nombre d'ordinateurs, niveau, prénoms, reprise |
-| `#game` | solo, passe | adversaires en miniature, pioche / défausse / main, ma grille |
-| `#duo` | duo | siège du haut tourné de 180°, pioche et défausse au milieu avec les ordinateurs en miniature, siège du bas |
-| `#roundOver` | tous | scores de la manche, classement final ; en duo, une moitié par joueur |
+| `#game` | solo, en ligne | adversaires en miniature, pioche / défausse / main, ma grille |
+| `#roundOver` | tous | scores de la manche, classement final |
 
 Tailles de cartes calculées en JavaScript (`layout()` → `--cw`, `--mw`) selon l'écran et le nombre d'adversaires. Couleurs par valeur : −2/−1 indigo, 0 bleu ciel, 1–4 vert, 5–8 jaune, 9–12 rouge ; indices dans deux coins pour la lecture à l'envers.
 
