@@ -129,6 +129,11 @@ input.txt{width:100%;padding:11px 12px;border-radius:12px;border:1px solid rgba(
 /* ---------- Voile et manche terminée ---------- */
 #veil,#wait{position:fixed;inset:0;z-index:50;background:radial-gradient(130% 80% at 50% 0%,var(--sky2),var(--sky1) 70%);display:flex;align-items:center;justify-content:center;padding:24px}
 #wait .waitdots{color:var(--sun);font-weight:700}
+.olhint{font-size:12px;color:var(--muted);margin:6px 2px 0}
+#plateau .table{--cw:var(--plcw,64px)}
+#plateau .msg{font-size:20px;min-height:56px}
+.plscores{padding:6px 16px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.plscores h2{margin:0;font-size:22px}
 #offbar{position:fixed;left:0;right:0;bottom:env(safe-area-inset-bottom);z-index:60;height:26px;line-height:25px;padding:0 10px;text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;background:#fef3c7;color:#92400e;border-top:1px solid #fcd34d}
 .olwho{margin:0 0 12px;font-size:14px;color:var(--muted)}.olwho b{color:var(--ink)}
 .olrow{display:flex;gap:8px}.olrow .txt{text-transform:uppercase;letter-spacing:.2em;text-align:center}.olrow .btn{width:auto;padding:11px 16px;font-size:16px}
@@ -205,6 +210,8 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
         <p class="olwho">Connecté : <b id="olWho"></b> <button class="linkbtn" id="btnOlLogout">Se déconnecter</button></p>
         <h3>Rejoindre une partie</h3>
         <div class="olrow"><input class="txt" id="olCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="Code" aria-label="Code de la partie"><button class="btn ghost" id="btnOlJoin">Rejoindre</button></div>
+        <button class="btn ghost" id="btnOlPlateau" style="margin-top:8px;max-width:none">Afficher en plateau (iPad)</button>
+        <p class="olhint">Plateau : l'écran montre la partie du code tapé, sans y jouer. Les joueurs jouent sur leur téléphone.</p>
         <h3 style="margin-top:14px">Parties en cours</h3>
         <div id="olList"></div>
       </div>
@@ -232,6 +239,22 @@ table.sc td.win,table.sc th.win{color:var(--sun)}
     <div class="msg" id="msg"></div>
     <div class="mine" id="mine"></div>
     <div class="actions"><button class="btn sun" id="btnAction" hidden>…</button></div>
+  </section>
+
+  <!-- ===== Plateau : affichage seul d'une partie en ligne ===== -->
+  <section id="plateau" hidden>
+    <div class="topbar">
+      <div class="round"><b class="rnd" id="plTitle"></b><small id="plSub"></small></div>
+      <button class="iconbtn" id="btnPlQuit" aria-label="Quitter le plateau">✕</button>
+    </div>
+    <div class="opps" id="plSeats"></div>
+    <div class="table" id="plTable">
+      <div class="pile"><div id="plDeck"></div><span class="lbl">Pioche</span></div>
+      <div class="pile"><div id="plDiscard"></div><span class="lbl">Défausse</span></div>
+      <div class="pile"><div id="plHand"></div><span class="lbl" id="plHandLbl">En main</span></div>
+    </div>
+    <div class="msg" id="plMsg"></div>
+    <div id="plScores" class="plscores"></div>
   </section>
 
   <!-- ===== Face à face (iPad) ===== -->

@@ -79,6 +79,8 @@ Fournisseur : Supabase (projet « plan-du-jour », table `parties`, accès rése
 
 **Cartes cachées** : l'état complet est dans la ligne ; l'interface masque les cartes face cachée des adversaires (pas de protection contre un joueur qui lirait le réseau, choix assumé).
 
+**Plateau** (`#plateau`, `PL`, `plateauStart/plRender/plRemote/plStatus/plStop`) : affichage seul. Il lit la partie par son code et la surveille comme un joueur, mais n'a aucun siège, n'écrit jamais et ne rejoue aucune action. `plLayout()` règle `--mw` et `--plcw` selon l'écran. `goHome()` l'arrête et recharge la partie locale éventuelle.
+
 **Bannière « Hors ligne »** (`#offbar`) : `navigator.onLine` ou échec réseau de la synchro ; ne bloque pas les touchers (`pointer-events:none`).
 
 ## Sauvegardes (localStorage)

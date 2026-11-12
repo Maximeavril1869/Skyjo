@@ -8,7 +8,8 @@
   var P = { mode: 'solo', bots: 1, level: 2, n1: 'Joueur 1', n2: 'Joueur 2' };
   var G = null, botTimer = null, screen = 'home';
   var BOT_DELAY = window.SKYJO_BOT_DELAY != null ? window.SKYJO_BOT_DELAY : 1000;
-  var EL = window.EnLigne, APP_VERSION = '2', OKEY = 'skyjo_online_v1';
+  var EL = window.EnLigne, APP_VERSION = '3', OKEY = 'skyjo_online_v1';
+  var PL = null;       // plateau (affichage seul) : { id, version, watch }
   var ONL = null;      // partie en ligne en cours : { id, me, version, pending[], pushing, status, watch, retry }
   var OLD_MODES = /[?&]anciens\b/.test(location.search);   // anciens modes (passe-passe, face à face), masqués depuis le mode En ligne
 
@@ -54,12 +55,13 @@
 
   function show(name) {
     screen = name;
-    ['home', 'game', 'duo'].forEach(function (s) { $(s).hidden = s !== name; });
+    ['home', 'game', 'duo', 'plateau'].forEach(function (s) { $(s).hidden = s !== name; });
     layout();
   }
   function goHome() {
     clearTimeout(botTimer);
     $('veil').hidden = true; $('roundOver').hidden = true;
+    if (PL) { plStop(); G = null; var s0 = load(KEY); if (s0 && s0.R && s0.seats && s0.seats.length === s0.n && !s0.over) G = s0; }
     if (ONL) {      // on quitte la partie en ligne (elle reste ouverte sur le serveur) : retour à la partie locale éventuelle
       onlineStop();
       G = null;
@@ -396,6 +398,7 @@
   /* ---------- Mise en page ---------- */
   function layout() {
     if (!G || screen === 'home') return;
+    if (screen === 'plateau') { plLayout(); return; }
     var W = window.innerWidth, H = window.innerHeight - 8, root = document.documentElement.style, k, cw, mw;
     if (G.mode === 'duo') {
       k = Math.max(0, G.n - 2);
@@ -618,6 +621,76 @@
     if (id && confirm('Supprimer la partie ' + id + ' ?')) EL.supprimer(id).catch(function () { /* déjà partie */ });
   });
   $('btnWaitHome').addEventListener('click', goHome);
+
+  /* ---------- Plateau : affichage seul ---------- */
+  var OFF_TXT = $('offbar').textContent;
+  function plStop() {
+    if (PL && PL.watch) PL.watch.stop();
+    PL = null; $('offbar').hidden = true; $('offbar').textContent = OFF_TXT;
+  }
+  function plLayout() {
+    if (!G || !G.R) return;
+    var W = window.innerWidth, H = window.innerHeight, n = G.n, cols = Math.min(n, W >= 900 ? 4 : 2), rows = Math.ceil(n / cols);
+    var mw = Math.floor(Math.min(((W - 24 - (cols - 1) * 12) / cols - 24) / 4.3, ((H - 300) / rows - 56) / 4.55, 72));
+    mw = Math.max(12, mw);
+    $('plSeats').style.setProperty('--oc', cols);
+    document.documentElement.style.setProperty('--mw', mw + 'px');
+    document.documentElement.style.setProperty('--plcw', Math.max(44, Math.min(110, Math.round(mw * 1.7))) + 'px');
+  }
+  function plRender() {
+    if (!G) return;
+    var R = G.R, h = '', p;
+    if (!R) {
+      $('plTitle').textContent = 'Plateau · ' + PL.id; $('plSub').textContent = 'Skyjo en ligne';
+      $('plSeats').innerHTML = ''; $('plTable').style.display = 'none'; $('plScores').innerHTML = '';
+      $('plMsg').textContent = 'En attente des joueurs…';
+      return;
+    }
+    var lm = lastMap(), pc = pileHTML(), t = '';
+    $('plTable').style.display = '';
+    $('plTitle').textContent = 'Manche ' + G.roundNo;
+    $('plSub').textContent = 'Plateau · ' + PL.id + ' · ' + (R.endedBy >= 0 && R.phase !== 'over' ? 'Dernier tour' : 'Fin de partie à 100 points');
+    for (p = 0; p < G.n; p++) h += oppHTML(p, lm);
+    $('plSeats').innerHTML = h;
+    $('plDeck').innerHTML = pc.deck; $('plDiscard').innerHTML = pc.discard;
+    $('plHand').innerHTML = R.hand != null ? faceHTML(R.hand, ' last') : '<div class="card gone"></div>';
+    $('plHandLbl').textContent = R.hand != null ? (R.src === 'discard' ? 'Prise dans la défausse' : 'Piochée') : 'En main';
+    if (R.phase === 'over') t = G.over ? 'Partie terminée' : 'Manche ' + G.roundNo + ' terminée';
+    else if (R.phase === 'init') t = 'Chacun retourne 2 cartes…';
+    else t = 'Au tour de ' + name(R.turn) + ' · ' + (R.phase === 'draw' ? 'pioche ou prend la défausse' : R.phase === 'place' ? 'pose la carte' : 'retourne une carte');
+    if (R.phase !== 'over' && G.note) t += ' — ' + G.note;
+    $('plMsg').textContent = t;
+    $('plScores').innerHTML = R.phase === 'over' ? scoresTable('all') + (R.doubled ? '<p>' + esc(name(R.endedBy)) + ' a fini sans avoir le score le plus bas : score doublé.</p>' : '') : '';
+    plLayout();
+  }
+  function plRemote() {
+    var o = PL; if (!o) return;
+    return EL.lire(o.id).then(function (row) {
+      if (PL !== o || !row || row.version <= o.version) return;
+      G = row.etat; o.version = row.version; plRender();
+    });
+  }
+  function plStatus(st) {
+    if (!PL) return;
+    if (st === 'supprimee') { goHome(); olMsg('Cette partie a été supprimée.'); return; }
+    if (st === 'auth') { goHome(); olError({ kind: 'auth' }); return; }
+    $('offbar').textContent = 'Hors ligne : le plateau se remettra à jour au retour du réseau';
+    $('offbar').hidden = st !== 'hors-ligne';
+  }
+  function plateauStart(code) {
+    code = (code || '').trim().toUpperCase();
+    if (code.length !== 4) { olMsg('Le code a 4 lettres.'); return; }
+    olMsg('');
+    EL.lire(code).then(function (row) {
+      if (!row || row.jeu !== 'skyjo') { olMsg('Code inconnu.'); return; }
+      clearTimeout(botTimer); onlineStop(); plStop();
+      G = row.etat; PL = { id: code, version: row.version, watch: null };
+      show('plateau'); plRender();
+      PL.watch = EL.surveiller(code, function () { return PL ? PL.version : 0; }, plRemote, plStatus);
+    }).catch(olError);
+  }
+  $('btnOlPlateau').addEventListener('click', function () { plateauStart($('olCode').value); });
+  $('btnPlQuit').addEventListener('click', goHome);
 
   /* ---------- Démarrage ---------- */
   (function () {

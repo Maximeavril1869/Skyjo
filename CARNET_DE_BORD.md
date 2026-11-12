@@ -49,4 +49,6 @@ Opérations :
 5. `tests/e2e/en_ligne.py` : 42 vérifications avec deux contextes navigateur et un faux Supabase (connexion refusée, code inconnu, troisième personne refusée, retournements simultanés avec conflits rejoués, cartes cachées, coup hors ligne envoyé au retour du réseau, reprise après rechargement, partie complète avec mêmes scores, rejouer, suppression vue par l'autre appareil).
 6. Corrigé pendant les essais : test hors ligne (Playwright répond aux requêtes interceptées sans réseau, il faut couper le faux serveur) ; placeholder du code tronqué.
 
+Plateau (même jour, version 3) : sur demande, l'iPad peut servir de plateau commun quand les joueurs sont ensemble, en **affichage seul** (décision de l'auteur) ; les téléphones jouent. Skyjo n'ayant pas de main cachée, le téléphone ne sert qu'à jouer sa grille. Ajouts : écran `#plateau`, bouton « Afficher en plateau (iPad) », 11 vérifications (53 au total : code inconnu, aucune carte cliquable, aucune valeur cachée, pas de siège pris, suit la partie, hors ligne, quitter, suppression).
+
 Limites : pas testé avec le vrai Supabase ni sur de vrais appareils.
